@@ -9,6 +9,7 @@ require (
 	github.com/dgryski/go-farm v0.0.0-20200201041132-a6ae2369ad13 // indirect
 	github.com/felixge/httpsnoop v1.0.2 // indirect
 	github.com/fsnotify/fsnotify v1.5.3 // indirect
+	github.com/go-redis/redis/v8 v8.11.5
 	github.com/gofrs/uuid v4.2.0+incompatible
 	github.com/golang-jwt/jwt/v4 v4.4.1
 	github.com/golang/glog v1.0.0 // indirect
