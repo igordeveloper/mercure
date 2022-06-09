@@ -13,7 +13,9 @@ import (
 )
 
 func init() { //nolint:gochecknoinits
-	RegisterTransportFactory("redis", NewRedisTransport)
+	RegisterTransportFactory("redis", NewRedisTCPTransport)
+	RegisterTransportFactory("rediss", NewRedisTCPTransport)
+	RegisterTransportFactory("redis+unix", NewRedisUnixTransport)
 }
 
 // RedisTransport implements the TransportInterface for redis databases
@@ -30,15 +32,22 @@ type RedisTransport struct {
 	cleanupInterval time.Duration
 }
 
-// NewRedisTransport creates a new redis transport.
-// redis://[user[:pass[@]HOST:[IP][/STREAM][?event_ttl=N&cleanup_interval=N]
-func NewRedisTransport(u *url.URL, l Logger, tss *TopicSelectorStore) (Transport, error) { //nolint:ireturn
+// Create a redis transport from the given URL and logger.  Before returning,
+// remove any transport-specific query parameters from the URL.
+func makeRedisTransport(u *url.URL, l Logger) (*RedisTransport, error) {
 	var (
 		eventTTL time.Duration = 24 * time.Hour
 		cleanupInterval time.Duration
 	)
+	stream := "mercure"
 
 	q := u.Query()
+
+	if s := q.Get("stream"); s != "" {
+		stream = s
+		q.Del("stream");
+	}
+
 	if s := q.Get("event_ttl"); s != "" {
 		d, err := time.ParseDuration(s)
 		if err == nil {
@@ -64,31 +73,112 @@ func NewRedisTransport(u *url.URL, l Logger, tss *TopicSelectorStore) (Transport
 	}
 	u.RawQuery = q.Encode()
 
+	return &RedisTransport{
+		subscribers: NewSubscriberList(1e5),
+		logger: l,
+		ctx: context.TODO(),
+		stream: stream,
+		closed: make(chan struct{}),
+		eventTTL: eventTTL,
+		cleanupInterval: cleanupInterval,
+	}, nil
+}
+
+// Connect to the given redis URL.
+func (t *RedisTransport) connect(u *url.URL) error {
 	options, err := redis.ParseURL(u.String())
+	if err != nil {
+		return err
+	}
+
+	if c := t.logger.Check(zap.DebugLevel, "Connecting"); c != nil {
+		c.Write(zap.String("URL", u.String()))
+	}
+
+	client := redis.NewClient(options)
+	if err := client.Ping(t.ctx).Err(); err != nil {
+		return fmt.Errorf("Failed to connect to Redis: %w", err)
+	}
+	t.client = client
+	return nil
+}
+
+// Create a TCP-based transport.
+// Input URL is one of
+//
+//    redis://[user[:pass]@]HOST:[PORT][/DBNUM][?[stream=NAME][cleanup_interval=D[&event_ttl=D]][&REDIS_PARAM]]
+//      Creates a plaintext TCP transport
+//    rediss://[user[:pass]@]HOST:[PORT][/DBNUM][?[stream=NAME][cleanup_interval=D[&event_ttl=D]][&REDIS_PARAM]]
+//      Creates TCP-encrypted TCP transport
+//
+// HOST is the hostname or IP address of the redis server.
+//
+// PORT is the port number it is listening on.  It defaults to 6379.
+//
+// DBNUM is the number of the redis database to use
+//
+// STREAM sets the redis stream name (defaults to "mercure"
+//
+// The parameters cleanup_interval and event_ttl control periodic database cleanups.  Both take as their
+// argument a duration specification suitable as input to time.ParseDuration.  The cleanup_control parameter
+// sets a duration between two successive database cleanups.  It must be set in order for the cleanup
+// routine to be enabled.  Optional event_ttl parameter sets the time-to-live of an event in the
+// database.  It defaults to 24 hours.
+//
+// REDIS_PARAM are redis-specific parameters as described in
+//     https://pkg.go.dev/github.com/go-redis/redis/v8#ParseURL.
+//
+func NewRedisTCPTransport(iu *url.URL, l Logger, tss *TopicSelectorStore) (Transport, error) {
+	u, err := url.Parse(iu.String())
+	if err != nil {
+		return nil, fmt.Errorf("can't clone URL: %w", err)
+	}
+
+	rt, err := makeRedisTransport(u, l);
 	if err != nil {
 		return nil, err
 	}
 
-	ctx := context.TODO()
-	client := redis.NewClient(options)
-	if err := client.Ping(ctx).Err(); err != nil {
-		return nil, fmt.Errorf("Failed to connect to Redis: %w", err)
+	if err := rt.connect(u); err != nil {
+		return nil, err
 	}
 
-	rt := &RedisTransport{
-		subscribers: NewSubscriberList(1e5),
-		logger: l,
-		client: client,
-		ctx: ctx,
-		closed: make(chan struct{}),
-		eventTTL: eventTTL,
-		cleanupInterval: cleanupInterval,
+	if rt.cleanupInterval > 0 {
+		go rt.cleanup()
 	}
 
-	if s := u.Path; s != "" {
-		rt.stream = s
-	} else {
-		rt.stream = "mercure"
+	return rt, nil
+}
+
+// Create a UNIX-based (socket) redis transport.
+// Input URL is:
+//
+//     redis+unix://[user[:pass]@]SOCKET_PATH[?[stream=NAME][cleanup_interval=N[&event_ttl=N]][&db=DBNUM][REDIS_PARAM]]
+//
+// SOCKET_PATH is the pathname of the unix socket server is listening on.  It must be an absolute pathname,
+// i.e. it must begine with a /.
+//
+// DBNUM is the number of the redis database to use.
+//
+// See above for the description of stream, cleanup_interval and event_ttl.
+//
+// REDIS_PARAM are redis-specific parameters as described in
+//     https://pkg.go.dev/github.com/go-redis/redis/v8#ParseURL.
+//
+func NewRedisUnixTransport(iu *url.URL, l Logger, tss *TopicSelectorStore) (Transport, error) {
+	u, err := url.Parse(iu.String())
+	if err != nil {
+		return nil, fmt.Errorf("can't clone URL: %w", err)
+	}
+
+	rt, err := makeRedisTransport(u, l);
+	if err != nil {
+		return nil, err
+	}
+	u.Scheme = "unix"
+
+	if err := rt.connect(u); err != nil {
+		return nil, err
 	}
 
 	if rt.cleanupInterval > 0 {
@@ -109,7 +199,6 @@ func (t *RedisTransport) storeUpdate(update *Update) error {
 		Values: map[string]interface{}{"update": updateJSON},
 	}).Result()
 	if err == nil {
-		//FIXME: Expire?
 		err = t.client.Set(t.ctx, update.ID, id, 0).Err()
 	}
 	if c := t.logger.Check(zap.DebugLevel, "Storing update"); c != nil {
@@ -120,7 +209,6 @@ func (t *RedisTransport) storeUpdate(update *Update) error {
 
 	return err
 }
-
 
 func (t *RedisTransport) Dispatch(update *Update) error {
 	select {
