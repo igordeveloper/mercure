@@ -109,7 +109,7 @@ func (t *RedisTransport) connect(u *url.URL) error {
 //    redis://[user[:pass]@]HOST:[PORT][/DBNUM][?[stream=NAME][cleanup_interval=D[&event_ttl=D]][&REDIS_PARAM]]
 //      Creates a plaintext TCP transport
 //    rediss://[user[:pass]@]HOST:[PORT][/DBNUM][?[stream=NAME][cleanup_interval=D[&event_ttl=D]][&REDIS_PARAM]]
-//      Creates TCP-encrypted TCP transport
+//      Creates TLS-encrypted TCP transport
 //
 // HOST is the hostname or IP address of the redis server.
 //
