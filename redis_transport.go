@@ -399,9 +399,17 @@ func (t *RedisTransport) trim() error {
 	t.Lock()
 	defer t.Unlock()
 
-	minid := strconv.FormatInt(time.Now().Add(- t.eventTTL).UnixNano() / 1e6, 10)
+	servertime, err := t.client.Time(t.ctx).Result()
+	if err != nil {
+		if c := t.logger.Check(zap.ErrorLevel, "Can't get server time"); c != nil {
+			c.Write(zap.Error(err))
+		}
+		return nil
+	}
+
+	minid := strconv.FormatInt(servertime.Add(- t.eventTTL).UnixNano() / 1e6, 10)
 	if c := t.logger.Check(zap.DebugLevel, "Redis minID"); c != nil {
-		c.Write(zap.Int64("now", time.Now().UnixNano()/1e6),
+		c.Write(zap.Time("now", servertime),
 			zap.String("minID", minid))
 	}
 	res, err := t.client.XRange(t.ctx, t.stream, "0", minid).Result()
