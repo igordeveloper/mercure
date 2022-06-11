@@ -275,7 +275,7 @@ func (t *RedisTransport) dispatchHistory(s *Subscriber) (err error) {
 				break
 			}
 
-			if s.Match(update) && !s.Dispatch(update, true) {
+			if s.Match(update) && s.Dispatch(update, true) {
 				responseLastEventID = msg.ID
 			}
 		} else {
