@@ -25,6 +25,11 @@ It's a free software (AGPL) written in Go. It is provided along with a library t
 
 In addition, a managed and high-scalability version of the Mercure.rocks hub is [available on Mercure.rocks](https://mercure.rocks/pricing).
 
+## Transports
+
+This version of `mercure` supports the following transports: `bolt`, `gdbm`, `postgres`, and `redis`.  See
+[TRANSPORT.md](TRANSPORT.md) for a detailed discussion of these.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).

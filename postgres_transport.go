@@ -14,6 +14,7 @@ import (
 
 func init() { //nolint:gochecknoinits
 	RegisterTransportFactory("postgres", NewPostgresTransport)
+	RegisterTransportFactory("postgresql", NewPostgresTransport)
 }
 
 // PostgresTransport implements the TransportInterface for PostgreSQL databases

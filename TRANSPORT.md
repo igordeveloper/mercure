@@ -1,7 +1,76 @@
-# Redis database support
+# Transports
 
-This version of `mercure` provides [redis](https://redis.io/) database transport.  This
-requires Redis version 7.0.0 or newer.
+This version of `mercure`, in addition to the default `bolt` transport, implements the following
+transports: `gdbm`, `redis`, and `postgres`.  Each of these transports provides a built-in cleanup
+routine which, when enabled, wakes up on predefined intervals and removes from the database events
+older than a certain timestamp.  These two values - wake up interval and event time-to-live - are
+configured by the following parameters in the transport URL:
+
+<a name="cleanup_parameters"></a>
+* `cleanup_interval=` _DURATION_
+
+Sets interval between two successive database cleanups.  If not set, periodic database cleanup is disabled.
+
+* `event_ttl=` _DURATION_
+
+Sets event time-to-live.  Default is 24 hours.
+
+The _DURATION_ argument must be a valid input to [time.ParseDuration](https://pkg.go.dev/time#ParseDuration).
+
+For example, the following transport URL requires the use of `redis` database and performs database cleanup
+each 2 hours.  During cleanup, events older than 12 hours are evicted:
+
+```
+   redis://hostname?cleanup_interval=2h&event_ttl=12h
+```
+
+The sections below discuss each transport type in detail
+
+## GDBM transport
+
+This transport uses [GNU dbm](http://www.gnu.org.ua/software/gdbm) file storage.  The URL has the form:
+
+```
+  gdbm://FILE[?PARAM]
+```
+
+where _FILE_ is the database file name (either absolute, starting with a slash, or relative to the
+current working directory), and _PARAM_ are database [cleanup parameters](#user-content-cleanup_parameters).
+
+## Postgres transport
+
+This transport uses a [PostgreSQL](https://www.postgresql.org/) database.  The URL is a
+[connection URI](https://www.postgresql.org/docs/current/libpq-connect.html#id-1.7.3.8.3.6) with
+optional [cleanup parameters](#user-content-cleanup_parameters) in its query part.
+
+To use this transport follow the steps below:
+
+1. Create the database `mercure` and the user to access it.
+
+2. Connect to the database and create the table `events`:
+
+```SQL
+CREATE TABLE events (
+  id varchar(64) NOT NULL,
+  ts timestamp NOT NULL DEFAULT NOW(),
+  message text
+);
+
+CREATE UNIQUE INDEX event_id ON events (id);
+CREATE INDEX event_ts ON events (ts);
+```
+
+3. Configure the `transport_url` parameter (or `MERCURE_TRANSPORT_URL` environment
+variable, if using the mercure container), e.g. (assuming database name `mercure`, user name `user` and
+password `guessme`):
+
+  ```conf
+    transport_url "postgres://user:guessme@localhost/mercure&cleanup_interval=6h"
+  ```
+
+## Redis transport
+
+This transport uses a remote [redis](https://redis.io/) database.  It requires Redis version 6.2.7 or newer.
 
 To use redis database, you need to do the following.
 
@@ -11,7 +80,7 @@ To use redis database, you need to do the following.
 If you are using `mercure` docker container, specify the URL in the `MERCURE_TRANSPORT_URL` environment
 variable.
 
-## URL
+### URL
 
 Redis database can be accessed via TCP/IP or via a UNIX socket.  This is defined by the _scheme_ part
 of the database URL.  There are three possible URLs:
@@ -64,30 +133,16 @@ Absolute pathname of the UNIX socket file.
 
 Additional parameters.  These fall into two categories: _Mercure-specific_ and _generic Redis_ parameters.
 
-## Mercure-specific parameters
+### Mercure-specific parameters
 
-URL parameters specific for the `mercure` redis transport are:
+URL parameters specific for the `mercure` redis transport are cleanup parameters [discussed above](#user-content-cleanup_parameters) plus the following:
 
 * `stream=` _NAME_
 
 Sets the name of the [redis stream](https://redis.io/docs/manual/data-types/streams/).  Default value
 is `mercure`.
 
-* `cleanup_interval=` _DURATION_
-
-Sets interval between two successive database cleanups.  If not set, periodic database cleanup is disabled.
-
-* `event_ttl=` _DURATION_
-
-Sets event time-to-live.  Default is 24 hours.
-
-Database cleanup is performed by a separate thread that wakes up in intervals specified by the
-`cleanup_interval` parameter.  During each wake-up, database objects older than `event_ttl` are
-evicted.
-
-The _DURATION_ argument must be a valid input to [time.ParseDuration](https://pkg.go.dev/time#ParseDuration).
-
-## Generic Redis parameters
+### Generic Redis parameters
 
 * `max_retries=` _INT_
 
@@ -139,7 +194,7 @@ aged connections.
 
 Amount of time client waits for connection if all connections are busy before returning an error.
 Default is `read_timeout` + 1 second.
- 
+
 * `idle_timeout=` _DURATION_
 
 Amount of time after which client closes idle connections.  Should be less than server's timeout.
@@ -153,6 +208,3 @@ connections reaper, but idle connections are still discarded by the client if `i
 * `read_only=` _BOOL_
 
 Enables read-only mode when querying slave nodes.
-
-
-
