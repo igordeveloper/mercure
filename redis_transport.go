@@ -24,7 +24,6 @@ type RedisTransport struct {
 	subscribers     *SubscriberList
 	logger		Logger
 	client		*redis.Client
-	ctx		context.Context
 	stream		string
 	closed          chan struct{}
 	closedOnce      sync.Once
@@ -76,7 +75,6 @@ func makeRedisTransport(u *url.URL, l Logger) (*RedisTransport, error) {
 	return &RedisTransport{
 		subscribers: NewSubscriberList(1e5),
 		logger: l,
-		ctx: context.TODO(),
 		stream: stream,
 		closed: make(chan struct{}),
 		eventTTL: eventTTL,
@@ -96,7 +94,7 @@ func (t *RedisTransport) connect(u *url.URL) error {
 	}
 
 	client := redis.NewClient(options)
-	if err := client.Ping(t.ctx).Err(); err != nil {
+	if err := client.Ping(context.Background()).Err(); err != nil {
 		return fmt.Errorf("Failed to connect to Redis: %w", err)
 	}
 	t.client = client
@@ -193,13 +191,14 @@ func (t *RedisTransport) storeUpdate(update *Update) error {
 	if err != nil {
 		return fmt.Errorf("error marshalling update: %w", err)
 	}
-	id, err := t.client.XAdd(t.ctx, &redis.XAddArgs{
+	ctx := context.Background()
+	id, err := t.client.XAdd(ctx, &redis.XAddArgs{
 		Stream: t.stream,
 		ID:     "*",
 		Values: map[string]interface{}{"update": updateJSON},
 	}).Result()
 	if err == nil {
-		err = t.client.Set(t.ctx, update.ID, id, 0).Err()
+		err = t.client.Set(ctx, update.ID, id, 0).Err()
 	}
 	if c := t.logger.Check(zap.DebugLevel, "Storing update"); c != nil {
 		c.Write(zap.String("updateJSON", string(updateJSON)),
@@ -234,7 +233,8 @@ func (t *RedisTransport) Dispatch(update *Update) error {
 
 func (t *RedisTransport) dispatchHistory(s *Subscriber) (err error) {
 	key := "0-0"
-	val, e := t.client.Get(t.ctx, s.RequestLastEventID).Result()
+	ctx := context.Background()
+	val, e := t.client.Get(ctx, s.RequestLastEventID).Result()
 	if e == nil {
 		key = val
 	} else if e != redis.Nil {
@@ -248,7 +248,7 @@ func (t *RedisTransport) dispatchHistory(s *Subscriber) (err error) {
 			  zap.String("key", key))
 	}
 
-	res, e := t.client.XReadStreams(t.ctx, t.stream, key).Result()
+	res, e := t.client.XReadStreams(ctx, t.stream, key).Result()
 	if e != nil {
 		err = fmt.Errorf("XREAD error: %w", e)
 		return
@@ -354,9 +354,10 @@ func (t *RedisTransport) Close() (err error) {
 
 func (t *RedisTransport) lastEventID() (result string, err error) {
 	result = EarliestLastEventID // Set default result value
-	res, e := t.client.XInfoStream(t.ctx, "stream").Result()
+	ctx := context.Background()
+	res, e := t.client.XInfoStream(ctx, "stream").Result()
 	if e == nil {
-		val, e := t.client.Get(t.ctx, res.LastGeneratedID).Result()
+		val, e := t.client.Get(ctx, res.LastGeneratedID).Result()
 		if e == nil {
 			result = val
 		} else if e != redis.Nil {
@@ -399,7 +400,8 @@ func (t *RedisTransport) trim() error {
 	t.Lock()
 	defer t.Unlock()
 
-	servertime, err := t.client.Time(t.ctx).Result()
+	ctx := context.Background()
+	servertime, err := t.client.Time(ctx).Result()
 	if err != nil {
 		if c := t.logger.Check(zap.ErrorLevel, "Can't get server time"); c != nil {
 			c.Write(zap.Error(err))
@@ -412,7 +414,7 @@ func (t *RedisTransport) trim() error {
 		c.Write(zap.Time("now", servertime),
 			zap.String("minID", minid))
 	}
-	res, err := t.client.XRange(t.ctx, t.stream, "0", minid).Result()
+	res, err := t.client.XRange(ctx, t.stream, "0", minid).Result()
 	if err != nil {
 		if err == redis.Nil {
 			if c := t.logger.Check(zap.DebugLevel, "Redis trim"); c != nil {
@@ -449,7 +451,7 @@ func (t *RedisTransport) trim() error {
 	nEvts := int64(0)
 
 	if (len(ids) > 0) {
-		if nIDs, err = t.client.Del(t.ctx, ids...).Result(); err != nil {
+		if nIDs, err = t.client.Del(ctx, ids...).Result(); err != nil {
 			if c := t.logger.Check(zap.ErrorLevel, "Deleting IDs"); c != nil {
 				c.Write(zap.Int("Total IDs", len(ids)),
 					zap.Int64("Deleted IDs", nIDs),
@@ -458,7 +460,7 @@ func (t *RedisTransport) trim() error {
 		}
 	}
 
-	if nEvts, err = t.client.XTrimMinID(t.ctx, t.stream, minid).Result(); err != nil {
+	if nEvts, err = t.client.XTrimMinID(ctx, t.stream, minid).Result(); err != nil {
 		if c := t.logger.Check(zap.ErrorLevel, "Deleting entries"); c != nil {
 			c.Write(zap.Error(err))
 		}
