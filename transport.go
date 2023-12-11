@@ -30,7 +30,7 @@ func NewTransport(u *url.URL, l Logger, tss *TopicSelectorStore) (Transport, err
 	transportFactoriesMu.RUnlock()
 
 	if !ok {
-		return nil, &TransportError{dsn: u.Redacted(), msg: "no such transport available"}
+		// return nil, &TransportError{dsn: u.Redacted(), msg: "no such transport available"}
 	}
 
 	return f(u, l, nil)
