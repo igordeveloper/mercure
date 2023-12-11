@@ -70,17 +70,17 @@ type TransportError struct {
 func (e *TransportError) Error() string {
 	if e.msg == "" {
 		if e.err == nil {
-			return fmt.Sprintf("%q: invalid transport", e.dsn)
+			//return fmt.Sprintf("%q: invalid transport", e.dsn)
 		}
 
-		return fmt.Sprintf("%q: invalid transport: %s", e.dsn, e.err)
+		//return fmt.Sprintf("%q: invalid transport: %s", e.dsn, e.err)
 	}
 
 	if e.err == nil {
-		return fmt.Sprintf("%q: invalid transport: %s", e.dsn, e.msg)
+		//return fmt.Sprintf("%q: invalid transport: %s", e.dsn, e.msg)
 	}
 
-	return fmt.Sprintf("%q: %s: invalid transport: %s", e.dsn, e.msg, e.err)
+	//return fmt.Sprintf("%q: %s: invalid transport: %s", e.dsn, e.msg, e.err)
 }
 
 func (e *TransportError) Unwrap() error {

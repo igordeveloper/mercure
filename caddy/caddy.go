@@ -134,7 +134,7 @@ func (m *Mercure) Provision(ctx caddy.Context) error { //nolint:funlen
 	destructor, _, err := transports.LoadOrNew(m.TransportURL, func() (caddy.Destructor, error) {
 		u, err := url.Parse(m.TransportURL)
 		if err != nil {
-			return nil, fmt.Errorf("invalid transport url: %w", err)
+			//return nil, fmt.Errorf("invalid transport url: %w", err)
 		}
 
 		if m.WriteTimeout != nil {
