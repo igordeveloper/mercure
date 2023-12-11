@@ -1,6 +1,6 @@
 module github.com/dunglas/mercure
 
-go 1.16
+go 1.21.5
 
 require (
 	github.com/MauriceGit/skiplist v0.0.0-20211105230623-77f5c8d3e145 // indirect
