@@ -1,7 +1,7 @@
-module github.com/dunglas/mercure/caddy
+module github.com/igordeveloper/mercure/caddy
 go 1.21.5
 
-replace github.com/dunglas/mercure => ../
+replace github.com/igordeveloper/mercure => ../
 
 require (
 	github.com/caddyserver/caddy/v2 v2.5.0
