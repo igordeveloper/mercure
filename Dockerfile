@@ -4,7 +4,7 @@ ENV GOROOT=/usr/lib/go
 ENV PATH="${GOROOT}/bin:${PATH}"
 RUN apk add git go
 WORKDIR /usr/src
-RUN git clone https://github.com/graygnuorg/mercure.git
+RUN git clone https://github.com/igordeveloper/mercure.git
 RUN cd mercure/caddy && \
     go mod tidy && \
     cd mercure && \
