@@ -1,13 +1,18 @@
 module github.com/igordeveloper/mercure/caddy
 go 1.21.5
 
-replace github.com/igordeveloper/mercure => ../
+replace (
+	// some packages must match versions defined in go.mod of caddyserver/caddy/v2
+	github.com/quic-go/quic-go => github.com/quic-go/quic-go v0.39.0
+)
+
+
 
 require (
 	github.com/caddyserver/caddy/v2 v2.5.0
 	github.com/dunglas/mercure v0.13.0
 	github.com/klauspost/cpuid/v2 v2.0.12 // indirect
-	github.com/lucas-clemente/quic-go v0.33.0 // indirect
+	github.com/quic-go/quic-go v0.39.0
 	github.com/miekg/dns v1.1.48 // indirect
 	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/prometheus/client_golang v1.12.1
