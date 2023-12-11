@@ -1,4 +1,4 @@
-module github.com/dunglas/mercure
+module github.com/igordeveloper/mercure
 
 go 1.21.5
 
